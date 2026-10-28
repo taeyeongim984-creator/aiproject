@@ -1,5 +1,6 @@
 import streamlit as st
-st.title('나의 첫 시 만들기')
+st.title('나의 첫 웹 서비스 만들기!')
 a=st.text_input('이름을 입력하세요!')
-st.selectbox('세가지의 주제를 입력하세요')
-st.button('만들기 생성')
+b=st.selectbox('좋아하는 음식을 입력하세요',['마라탕','떡볶이','우동'])
+if st.button('인사말 생성')
+st.write('반갑습니다')
