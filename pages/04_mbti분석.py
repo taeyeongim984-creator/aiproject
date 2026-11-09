@@ -25,7 +25,7 @@ st.write("국가를 선택하면 MBTI 16개 유형의 비율을 그래프로 확
 # 현재 파이썬 파일은 pages 폴더에 있고,
 # CSV 파일은 그 상위 폴더에 있습니다.
 BASE_DIR = Path(__file__).resolve().parent.parent
-CSV_PATH = BASE_DIR / "countriesMBTI_16types (6).csv"
+CSV_PATH = BASE_DIR / "countriesMBTI_16types(6).csv"
 
 
 # -----------------------------
