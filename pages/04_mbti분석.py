@@ -1,90 +1,159 @@
+
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+
+# -----------------------------
+# 1. 페이지 설정
+# -----------------------------
 st.set_page_config(
     page_title="세계 MBTI 국가별 분석",
     page_icon="🌍",
-    layout="wide",
+    layout="wide"
 )
 
 st.title("🌍 세계 MBTI 국가별 비율 분석")
-st.write("국가를 선택하면 해당 국가의 MBTI 16개 유형 비율을 막대그래프로 확인할 수 있어요.")
-
-# app.py와 CSV 파일을 같은 GitHub 저장소 폴더에 업로드하세요.
-CSV_PATH = Path(__file__).parent / "countriesMBTI_16types (6).csv"
+st.write("국가를 선택하면 MBTI 16개 유형의 비율을 그래프로 확인할 수 있어요!")
 
 
+# -----------------------------
+# 2. CSV 파일 경로 설정
+# -----------------------------
+# 현재 파이썬 파일은 pages 폴더에 있고,
+# CSV 파일은 그 상위 폴더에 있습니다.
+BASE_DIR = Path(__file__).resolve().parent.parent
+CSV_PATH = BASE_DIR / "countriesMBTI_16types (6).csv"
+
+
+# -----------------------------
+# 3. CSV 데이터 불러오기
+# -----------------------------
 @st.cache_data
-def load_data(path):
-    data = pd.read_csv(path)
+def load_data(file_path):
+    data = pd.read_csv(file_path)
+
+    # 열 이름의 앞뒤 공백 제거
     data.columns = data.columns.astype(str).str.strip()
 
     if "Country" not in data.columns:
-        raise ValueError("CSV 파일에 'Country' 열이 없습니다.")
+        raise ValueError(
+            "CSV 파일에 Country 열이 없습니다."
+        )
 
+    # 국가 이름이 없는 행 제거
     data = data.dropna(subset=["Country"]).copy()
     data["Country"] = data["Country"].astype(str).str.strip()
 
-    mbti_types = [column for column in data.columns if column != "Country"]
+    # Country를 제외한 나머지 열을 MBTI 유형으로 설정
+    mbti_types = [
+        column for column in data.columns
+        if column != "Country"
+    ]
+
     if not mbti_types:
         raise ValueError("MBTI 유형 열을 찾을 수 없습니다.")
 
+    # MBTI 데이터를 숫자로 변환
     for column in mbti_types:
-        data[column] = pd.to_numeric(data[column], errors="coerce")
+        data[column] = pd.to_numeric(
+            data[column],
+            errors="coerce"
+        )
 
+    # 중복 국가 제거 및 국가 이름순 정렬
     data = data.drop_duplicates(subset=["Country"])
     data = data.sort_values("Country").reset_index(drop=True)
+
     return data, mbti_types
 
 
 try:
     df, mbti_types = load_data(CSV_PATH)
+
 except FileNotFoundError:
     st.error(
-        "CSV 파일을 찾을 수 없습니다. GitHub 저장소에서 "
-        "'app.py'와 'countriesMBTI_16types (6).csv'를 같은 폴더에 넣어 주세요."
+        "CSV 파일을 찾을 수 없습니다.\n\n"
+        f"확인한 경로: {CSV_PATH}\n\n"
+        "CSV 파일이 app.py와 같은 상위 폴더에 있는지 "
+        "확인해 주세요."
     )
     st.stop()
+
 except (ValueError, pd.errors.ParserError) as error:
-    st.error(f"CSV 파일을 읽는 중 오류가 발생했습니다: {error}")
+    st.error(f"데이터를 읽는 중 오류가 발생했습니다: {error}")
     st.stop()
+
 
 if df.empty:
     st.error("분석할 국가 데이터가 없습니다.")
     st.stop()
 
+
+# -----------------------------
+# 4. 국가 선택
+# -----------------------------
 countries = df["Country"].tolist()
-default_index = countries.index("South Korea") if "South Korea" in countries else 0
+
+# South Korea가 있으면 기본 선택
+if "South Korea" in countries:
+    default_index = countries.index("South Korea")
+else:
+    default_index = 0
 
 selected_country = st.selectbox(
-    "🌐 국가 선택",
+    "🌐 국가를 선택하세요",
     options=countries,
-    index=default_index,
+    index=default_index
 )
 
-country_row = df.loc[df["Country"] == selected_country].iloc[0]
+
+# -----------------------------
+# 5. 선택한 국가의 MBTI 데이터 정리
+# -----------------------------
+country_row = df.loc[
+    df["Country"] == selected_country
+].iloc[0]
 
 chart_data = pd.DataFrame({
     "MBTI": mbti_types,
-    "비율": [country_row[mbti] for mbti in mbti_types],
+    "비율": [
+        country_row[mbti]
+        for mbti in mbti_types
+    ]
 })
-chart_data["비율"] = pd.to_numeric(chart_data["비율"], errors="coerce")
-chart_data = chart_data.dropna(subset=["비율"]).copy()
+
+# 숫자로 변환할 수 없는 값 제거
+chart_data["비율"] = pd.to_numeric(
+    chart_data["비율"],
+    errors="coerce"
+)
+
+chart_data = chart_data.dropna(
+    subset=["비율"]
+).copy()
 
 if chart_data.empty:
-    st.warning("선택한 국가에 표시할 MBTI 비율 데이터가 없습니다.")
+    st.warning("선택한 국가에 표시할 MBTI 데이터가 없습니다.")
     st.stop()
 
-# CSV의 값은 0~1 비율이므로 백분율로 변환합니다.
+# 비율을 백분율로 변환
 chart_data["비율(%)"] = chart_data["비율"] * 100
+
+# 높은 비율부터 정렬
 chart_data = chart_data.sort_values(
-    "비율(%)", ascending=False
+    "비율(%)",
+    ascending=False
 ).reset_index(drop=True)
 
-# 1위는 노란색, 2위부터는 진한 보라색에서 연한 보라색으로 표시합니다.
+
+# -----------------------------
+# 6. 그래프 색상 설정
+# -----------------------------
+# 1위: 노란색
+# 2위부터: 진한 보라색에서 연한 보라색
 purple_gradient = [
     "#5B21B6",
     "#6D28D9",
@@ -100,17 +169,33 @@ purple_gradient = [
     "#EEE9FF",
     "#F1EDFF",
     "#F4F1FF",
-    "#F7F5FF",
+    "#F7F5FF"
 ]
 
-colors = ["#FFD43B"] + purple_gradient[: max(0, len(chart_data) - 1)]
+colors = ["#FFD43B"] + purple_gradient[
+    :len(chart_data) - 1
+]
+
+# MBTI별 색상 지정
 color_map = {
     mbti: colors[index]
     for index, mbti in enumerate(chart_data["MBTI"])
 }
 
-st.subheader(f"📊 {selected_country}의 MBTI 비율")
-st.caption("1위: 노란색 · 나머지: 진한 보라색에서 연한 보라색으로")
+
+# -----------------------------
+# 7. Plotly 막대그래프 만들기
+# -----------------------------
+st.divider()
+
+st.subheader(
+    f"📊 {selected_country}의 MBTI 비율"
+)
+
+st.caption(
+    "🥇 1위는 노란색, "
+    "나머지는 진한 보라색에서 연한 보라색으로 표시됩니다."
+)
 
 fig = px.bar(
     chart_data,
@@ -120,54 +205,106 @@ fig = px.bar(
     text="비율(%)",
     color="MBTI",
     color_discrete_map=color_map,
-    category_orders={"MBTI": chart_data["MBTI"].tolist()[::-1]},
+    category_orders={
+        "MBTI": chart_data["MBTI"].tolist()[::-1]
+    },
     labels={
         "비율(%)": "비율 (%)",
-        "MBTI": "MBTI 유형",
+        "MBTI": "MBTI 유형"
     },
-    title=f"{selected_country} — MBTI 유형별 비율",
+    title=f"{selected_country} - MBTI 유형별 비율"
 )
 
+# 막대 위에 비율 표시
 fig.update_traces(
     texttemplate="%{text:.2f}%",
     textposition="outside",
     cliponaxis=False,
-    hovertemplate="<b>%{y}</b><br>비율: %{x:.2f}%<extra></extra>",
+    hovertemplate=(
+        "<b>%{y}</b><br>"
+        "비율: %{x:.2f}%"
+        "<extra></extra>"
+    )
 )
 
+# 그래프 디자인
 fig.update_layout(
     showlegend=False,
     height=650,
-    margin=dict(l=20, r=70, t=70, b=40),
+    margin=dict(
+        l=20,
+        r=80,
+        t=70,
+        b=50
+    ),
     xaxis=dict(
         title="비율 (%)",
         rangemode="tozero",
         showgrid=True,
-        gridcolor="rgba(128,128,128,0.18)",
+        gridcolor="rgba(128,128,128,0.18)"
     ),
     yaxis=dict(
         title="",
         categoryorder="array",
-        categoryarray=chart_data["MBTI"].tolist()[::-1],
-    ),
+        categoryarray=chart_data["MBTI"].tolist()[::-1]
+    )
 )
 
-st.plotly_chart(fig, use_container_width=True)
+# Streamlit 화면에 그래프 출력
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
 
-top = chart_data.iloc[0]
+
+# -----------------------------
+# 8. 가장 높은 MBTI 결과
+# -----------------------------
+top_mbti = chart_data.iloc[0]
+
 col1, col2 = st.columns(2)
-col1.metric("가장 높은 비율의 유형", str(top["MBTI"]))
-col2.metric("1위 비율", f"{top['비율(%)']:.2f}%")
 
-with st.expander("📋 비율 데이터 표 보기"):
-    table = chart_data[["MBTI", "비율(%)"]].copy()
-    st.dataframe(
-        table.style.format({"비율(%)": "{:.2f}%"}),
-        use_container_width=True,
-        hide_index=True,
+with col1:
+    st.metric(
+        label="🏆 비율 1위 MBTI",
+        value=top_mbti["MBTI"]
     )
 
+with col2:
+    st.metric(
+        label="📈 1위 비율",
+        value=f"{top_mbti['비율(%)']:.2f}%"
+    )
+
+
+# -----------------------------
+# 9. 상세 비율 표
+# -----------------------------
+with st.expander("📋 MBTI별 상세 비율 확인하기"):
+    display_data = chart_data[
+        ["MBTI", "비율(%)"]
+    ].copy()
+
+    display_data.columns = [
+        "MBTI 유형",
+        "비율(%)"
+    ]
+
+    st.dataframe(
+        display_data.style.format({
+            "비율(%)": "{:.2f}%"
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+# -----------------------------
+# 10. 데이터 안내
+# -----------------------------
+st.divider()
+
 st.caption(
-    "참고: 이 그래프는 제공된 CSV의 수치를 백분율로 변환해 표시합니다. "
-    "데이터가 각 국가 전체 인구를 대표하는지는 원본 출처를 확인하세요."
+    "※ 비율은 제공된 CSV 데이터를 백분율로 변환한 값입니다. "
+    "데이터가 각 국가 전체 인구를 대표하는지는 원본 출처를 확인해 주세요."
 )
