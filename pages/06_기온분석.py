@@ -273,3 +273,24 @@ else:
         f"{monthly_data['연도'].min()}년 ~ "
         f"{monthly_data['연도'].max()}년"
     )
+
+# 비교할 연도 2개 선택
+available_years = sorted(df["연도"].dropna().unique().tolist())
+
+if len(available_years) < 2:
+    st.warning("비교할 수 있는 연도가 2개 이상 필요합니다.")
+    st.stop()
+
+year1, year2 = st.selectbox(
+    "📅 비교할 첫 번째 연도",
+    available_years,
+    index=0
+), st.selectbox(
+    "📅 비교할 두 번째 연도",
+    available_years,
+    index=len(available_years) - 1
+)
+
+if year1 == year2:
+    st.warning("서로 다른 연도를 선택해 주세요.")
+    st.stop()
