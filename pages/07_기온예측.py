@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from sklearn.linear_model import LinearRegression
 
 # --------------------------------------------------
 # 1. 페이지 설정
@@ -16,29 +17,35 @@ st.set_page_config(
 
 st.title("🌡️ 월별 평균기온 예측 AI")
 st.write(
-    "과거 기온 데이터를 이용해 선형회귀 알고리즘으로 "
-    "선택한 연도의 평균기온을 예측합니다."
+    "과거의 월별 평균기온 데이터를 이용해 "
+    "선형회귀 알고리즘으로 미래 기온을 예측합니다."
 )
 
 # --------------------------------------------------
 # 2. CSV 파일 불러오기
-# temperature.csv는 app.py와 같은 폴더에 있어야 합니다.
+# 파이썬 파일은 pages 폴더에 있고,
+# CSV 파일은 그 상위 폴더에 있음
 # --------------------------------------------------
-@st.cache_data
-def load_data():
-    file_path = Path(__file__).resolve().parent / "temperature.csv"
+CSV_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "temperature.csv"
+)
 
+
+@st.cache_data
+def load_data(file_path):
     if not file_path.exists():
         raise FileNotFoundError(
-            "temperature.csv 파일을 app.py와 같은 폴더에 넣어주세요."
+            "temperature.csv 파일을 프로젝트 최상위 폴더에 넣어주세요."
         )
 
-    # 한글 CSV의 인코딩을 고려하여 파일 읽기
+    # CSV 파일 인코딩 처리
     try:
         data = pd.read_csv(file_path, encoding="cp949")
     except UnicodeDecodeError:
         data = pd.read_csv(file_path, encoding="utf-8-sig")
 
+    # 필요한 열이 있는지 확인
     required_columns = ["일시", "평균기온(℃)"]
 
     for column in required_columns:
@@ -47,22 +54,25 @@ def load_data():
                 f"CSV 파일에 '{column}' 열이 없습니다."
             )
 
-    # 날짜와 평균기온 정리
+    # 날짜 변환: 예) Oct-07
     data["일시"] = pd.to_datetime(
         data["일시"].astype(str).str.strip(),
         format="%b-%y",
         errors="coerce"
     )
 
+    # 평균기온을 숫자로 변환
     data["평균기온(℃)"] = pd.to_numeric(
         data["평균기온(℃)"],
         errors="coerce"
     )
 
+    # 결측 데이터 제거
     data = data.dropna(
         subset=["일시", "평균기온(℃)"]
     ).copy()
 
+    # 연도와 월 추출
     data["연도"] = data["일시"].dt.year
     data["월"] = data["일시"].dt.month
 
@@ -70,17 +80,20 @@ def load_data():
 
 
 try:
-    df = load_data()
+    df = load_data(CSV_PATH)
+
 except Exception as error:
     st.error(f"데이터를 불러오지 못했습니다: {error}")
     st.stop()
+
 
 if df.empty:
     st.error("분석할 수 있는 기온 데이터가 없습니다.")
     st.stop()
 
+
 # --------------------------------------------------
-# 3. 월과 예측 연도 선택
+# 3. 사용자 입력
 # --------------------------------------------------
 st.subheader("📌 예측 조건 선택")
 
@@ -90,8 +103,7 @@ with col1:
     selected_month = st.selectbox(
         "예측할 월을 선택하세요",
         options=list(range(1, 13)),
-        format_func=lambda month: f"{month}월",
-        index=0
+        format_func=lambda month: f"{month}월"
     )
 
 with col2:
@@ -105,76 +117,92 @@ with col2:
 
 selected_year = int(selected_year)
 
-# 선택한 월의 모든 연도별 데이터 추출
-month_data = df[df["월"] == selected_month].copy()
+
+# --------------------------------------------------
+# 4. 선택한 월의 모든 연도 데이터 추출
+# --------------------------------------------------
+month_data = df[
+    df["월"] == selected_month
+].copy()
+
 month_data = month_data.sort_values("연도")
 
 if len(month_data) < 2:
     st.warning(
-        f"{selected_month}월의 데이터가 부족해 "
-        "선형회귀를 계산할 수 없습니다."
+        f"{selected_month}월의 데이터가 부족합니다. "
+        "선형회귀를 계산하려면 서로 다른 연도의 데이터가 필요합니다."
     )
     st.stop()
 
+
 # --------------------------------------------------
-# 4. 선형회귀 알고리즘
-# X: 연도, Y: 평균기온
+# 5. 선형회귀 모델 학습
+# X: 연도
+# Y: 평균기온
 # --------------------------------------------------
-X = month_data["연도"].to_numpy(dtype=float)
+X = month_data[["연도"]].to_numpy(dtype=float)
+
 Y = month_data["평균기온(℃)"].to_numpy(dtype=float)
 
-# y = a*x + b 형태의 직선 계산
-slope, intercept = np.polyfit(X, Y, 1)
+# 선형회귀 모델 생성
+model = LinearRegression()
 
-# 각 과거 연도의 회귀 예측값
-fitted_values = slope * X + intercept
+# 과거 데이터로 학습
+model.fit(X, Y)
 
-# 사용자가 입력한 연도의 예측 기온
-predicted_temperature = slope * selected_year + intercept
+# 과거 연도별 회귀 예측값
+fitted_values = model.predict(X)
 
-# 결정계수 R² 계산
-ss_res = np.sum((Y - fitted_values) ** 2)
-ss_tot = np.sum((Y - np.mean(Y)) ** 2)
+# 사용자가 입력한 연도의 기온 예측
+predicted_temperature = model.predict(
+    np.array([[selected_year]], dtype=float)
+)[0]
 
-if ss_tot == 0:
-    r_squared = 0.0
-else:
-    r_squared = 1 - (ss_res / ss_tot)
+# 회귀선 기울기와 절편
+slope = model.coef_[0]
+intercept = model.intercept_
+
+# 결정계수
+r_squared = model.score(X, Y)
+
 
 # --------------------------------------------------
-# 5. 예측 결과 표시
+# 6. 예측 결과
 # --------------------------------------------------
 st.subheader("🔮 기온 예측 결과")
 
-result_col1, result_col2, result_col3 = st.columns(3)
+result1, result2, result3 = st.columns(3)
 
-with result_col1:
+with result1:
     st.metric(
         label=f"{selected_year}년 {selected_month}월 예측 평균기온",
         value=f"{predicted_temperature:.1f} °C"
     )
 
-with result_col2:
+with result2:
     st.metric(
-        label="회귀 직선의 기울기",
+        label="회귀선 기울기",
         value=f"{slope:.3f} °C/년"
     )
 
-with result_col3:
+with result3:
     st.metric(
         label="결정계수 (R²)",
         value=f"{r_squared:.3f}"
     )
 
 st.caption(
-    "예측값은 선택한 월의 과거 평균기온을 이용한 통계적 추정치입니다. "
-    "실제 관측 기온과 다를 수 있습니다."
+    "예측값은 과거 자료에 나타난 선형적인 경향을 바탕으로 계산한 값이며, "
+    "실제 기온과 다를 수 있습니다."
 )
 
+
 # --------------------------------------------------
-# 6. 그래프 시각화
+# 7. 그래프 시각화
 # --------------------------------------------------
-st.subheader(f"📈 {selected_month}월 평균기온 및 선형회귀 예측")
+st.subheader(
+    f"📈 {selected_month}월 평균기온 및 선형회귀 그래프"
+)
 
 # 한글 글꼴 설정
 plt.rcParams["font.family"] = [
@@ -186,68 +214,76 @@ plt.rcParams["axes.unicode_minus"] = False
 
 fig, ax = plt.subplots(figsize=(12, 6))
 
-# 실제로 관측한 평균기온: 파란색 점
+years = month_data["연도"].to_numpy(dtype=float)
+temperatures = month_data["평균기온(℃)"].to_numpy(dtype=float)
+
+# 1) 실제 관측 기온
 ax.scatter(
-    X,
-    Y,
+    years,
+    temperatures,
     color="royalblue",
     s=55,
     label="실제 평균기온",
     zorder=4
 )
 
-# 회귀선이 계산한 과거 기온: 실제 데이터 범위에서 실선
-historical_line_x = np.linspace(X.min(), X.max(), 200)
-historical_line_y = slope * historical_line_x + intercept
+# 2) 과거 데이터 범위의 회귀선
+historical_x = np.linspace(
+    years.min(),
+    years.max(),
+    200
+).reshape(-1, 1)
+
+historical_y = model.predict(historical_x)
 
 ax.plot(
-    historical_line_x,
-    historical_line_y,
+    historical_x.ravel(),
+    historical_y,
     color="darkorange",
     linewidth=2.5,
     label="선형회귀 추세선",
     zorder=2
 )
 
-# 각 관측값과 회귀선 사이의 차이(잔차)를 세로선으로 표시
-for year, actual, fitted in zip(X, Y, fitted_values):
+# 3) 실제 기온과 회귀 예측값 사이의 잔차
+for year, actual, fitted in zip(
+    years, temperatures, fitted_values
+):
     ax.plot(
         [year, year],
         [actual, fitted],
         color="gray",
-        alpha=0.35,
-        linewidth=0.8,
+        alpha=0.4,
+        linewidth=0.9,
         zorder=1
     )
 
-# 예측 연도가 과거 데이터 범위를 벗어나면 외삽 구간을 점선으로 표시
-if selected_year > X.max():
-    extension_x = np.linspace(X.max(), selected_year, 100)
-    extension_y = slope * extension_x + intercept
+# 4) 선택한 연도까지 회귀선 연장
+if selected_year != years.max():
+    extension_x = np.linspace(
+        years.max(),
+        selected_year,
+        100
+    ).reshape(-1, 1)
+
+    extension_y = model.predict(extension_x)
+
+    if selected_year > years.max():
+        extension_label = "미래 예측 구간"
+    else:
+        extension_label = "과거 방향 추정 구간"
 
     ax.plot(
-        extension_x,
+        extension_x.ravel(),
         extension_y,
         color="darkorange",
         linestyle="--",
         linewidth=2.5,
-        label="미래 예측 구간"
+        label=extension_label,
+        zorder=3
     )
 
-elif selected_year < X.min():
-    extension_x = np.linspace(selected_year, X.min(), 100)
-    extension_y = slope * extension_x + intercept
-
-    ax.plot(
-        extension_x,
-        extension_y,
-        color="darkorange",
-        linestyle="--",
-        linewidth=2.5,
-        label="과거 방향 추정 구간"
-    )
-
-# 예측 기온: 빨간색 별표
+# 5) 예측 기온 표시
 ax.scatter(
     [selected_year],
     [predicted_temperature],
@@ -260,7 +296,6 @@ ax.scatter(
     zorder=5
 )
 
-# 예측값을 그래프에 직접 표시
 ax.annotate(
     f"{predicted_temperature:.1f}°C",
     xy=(selected_year, predicted_temperature),
@@ -271,81 +306,99 @@ ax.annotate(
     fontweight="bold"
 )
 
+# 그래프 제목과 축
 ax.set_title(
     f"{selected_month}월 평균기온 선형회귀 분석",
     fontsize=16
 )
+
 ax.set_xlabel("연도", fontsize=12)
 ax.set_ylabel("평균기온 (℃)", fontsize=12)
 
 ax.grid(True, linestyle=":", alpha=0.5)
 ax.legend(loc="best")
+
 fig.tight_layout()
 
 st.pyplot(fig)
 plt.close(fig)
 
+
 # --------------------------------------------------
-# 7. 과거 데이터 표
+# 8. 전체 기온 데이터 표
 # --------------------------------------------------
-with st.expander("📋 선택한 월의 전체 기온 데이터 보기"):
-    display_data = month_data[["연도", "일시", "평균기온(℃)"]].copy()
-    display_data["일시"] = display_data["일시"].dt.strftime("%Y년 %m월")
+with st.expander("📋 선택한 월의 전체 기온 데이터 확인"):
+    display_data = month_data[
+        ["일시", "연도", "평균기온(℃)"]
+    ].copy()
+
+    display_data["일시"] = (
+        display_data["일시"].dt.strftime("%Y년 %m월")
+    )
+
+    display_data = display_data.rename(
+        columns={
+            "일시": "관측 월",
+            "연도": "연도",
+            "평균기온(℃)": "평균기온(℃)"
+        }
+    )
 
     st.dataframe(
-        display_data.rename(
-            columns={
-                "연도": "연도",
-                "일시": "관측 월",
-                "평균기온(℃)": "평균기온(℃)"
-            }
-        ),
+        display_data,
         use_container_width=True,
         hide_index=True
     )
 
+
 # --------------------------------------------------
-# 8. 선형회귀 알고리즘 쉽게 설명하기
+# 9. 선형회귀 알고리즘 설명
 # --------------------------------------------------
 st.divider()
-st.subheader("🧠 선형회귀 알고리즘이란?")
+
+st.subheader("🧠 선형회귀 알고리즘 쉽게 이해하기")
 
 st.markdown("""
-선형회귀는 **과거 데이터의 전체적인 흐름을 가장 잘 나타내는 직선**을 찾고,
-그 직선을 이용해 새로운 값을 예측하는 알고리즘입니다.
+### ① 파란색 점: 실제 평균기온
+CSV 파일에 기록된 각 연도의 실제 평균기온입니다.
+점 하나가 해당 연도의 선택한 월 평균기온을 나타냅니다.
 
-**① 파란색 점 — 실제 평균기온**
-- CSV 파일에 기록된 각 연도의 실제 평균기온입니다.
-- 점 하나가 특정 연도의 해당 월 평균기온을 의미합니다.
+### ② 주황색 실선: 선형회귀 추세선
+선형회귀 모델이 과거의 연도와 평균기온 데이터를 학습해 계산한 직선입니다.
+실제 데이터와 직선 사이의 세로 방향 차이를 전체적으로 작게 만드는 직선을 찾습니다.
 
-**② 주황색 실선 — 선형회귀 추세선**
-- 과거의 모든 기온 데이터를 바탕으로 계산한 직선입니다.
-- 실제 점들과 직선 사이의 세로 방향 차이를 전체적으로 작게 만드는 방향으로 직선을 결정합니다.
-- 직선이 오른쪽으로 올라가면 장기적인 상승 경향, 내려가면 하락 경향을 뜻합니다.
+- 직선이 오른쪽 위로 올라가면 장기적인 상승 경향을 뜻합니다.
+- 직선이 오른쪽 아래로 내려가면 장기적인 하락 경향을 뜻합니다.
 
-**③ 회색 세로선 — 예측 오차(잔차)**
-- 실제 기온과 회귀 직선이 계산한 기온의 차이입니다.
-- 세로선이 짧을수록 해당 데이터의 실제값이 회귀선에 가깝다는 뜻입니다.
+### ③ 회색 세로선: 잔차(예측 오차)
+각 실제 기온과 회귀선이 계산한 기온 사이의 차이를 보여줍니다.
+세로선이 짧을수록 실제 관측값이 회귀선에 가깝습니다.
 
-**④ 빨간색 별표 — 선택한 연도의 예측 기온**
-- 계산한 회귀 직선에 사용자가 선택한 연도를 넣어 얻은 값입니다.
-- 과거 데이터의 범위 바깥에 있는 연도를 예측하면 점선으로 표시된 구간까지 직선을 연장합니다.
+### ④ 빨간색 별표: 예측 기온
+사용자가 선택한 연도를 선형회귀 모델에 입력해 계산한 예상 평균기온입니다.
 
-### 선형회귀는 어떻게 계산할까요?
+미래 연도를 선택하면 주황색 점선이 예측 연도까지 이어집니다.
+이처럼 기존 데이터의 범위 바깥으로 직선을 연장해 값을 추정하는 것을
+**외삽**이라고 합니다.
 
-이 프로그램은 다음과 같은 직선의 식을 사용합니다.
+### 📐 선형회귀는 어떻게 계산할까요?
+
+선형회귀는 다음과 같은 직선의 식을 사용합니다.
 
 **예측 평균기온 = 기울기 × 연도 + 절편**
 
-- **기울기:** 연도가 1년 증가할 때 회귀선의 기온이 얼마나 변하는지를 나타냅니다.
-- **절편:** 직선의 위치를 결정하는 값입니다.
-- **예측:** 선택한 연도를 식에 대입해 평균기온을 계산합니다.
+- **기울기:** 연도가 1년 증가할 때 회귀선의 기온이 얼마나 변하는지 나타냅니다.
+- **절편:** 회귀 직선의 위치를 결정하는 값입니다.
+- **학습:** `model.fit()`이 과거 연도와 기온의 관계를 계산합니다.
+- **예측:** `model.predict()`가 학습한 관계를 이용해 선택한 연도의 기온을 추정합니다.
+- **결정계수 R²:** 회귀선이 과거 기온 데이터의 변동을 얼마나 설명하는지 보여줍니다.
+  1에 가까울수록 데이터에 대한 설명력이 높으며, 음수가 나올 수도 있습니다.
 
-선형회귀는 과거 데이터의 경향을 바탕으로 추정합니다. 계절별 기온 변화나 갑작스러운 기후 변화까지 반영하는 복잡한 기상예보 모델은 아니므로, 예측값을 실제 기온과 동일하다고 해석하면 안 됩니다.
+💡 **주의:** 기온은 계절, 강수, 기후 변화 등 다양한 요인의 영향을 받습니다.
+이 프로그램은 과거의 선형적인 경향만 이용하므로 실제 기상예보와는 다릅니다.
 """)
 
 st.info(
-    "💡 그래프를 읽는 핵심: 파란색 점은 실제 관측값, "
-    "주황색 선은 데이터에서 학습한 직선, "
-    "빨간색 별표는 선택한 연도의 예측값입니다."
+    "💡 그래프 읽기: 파란색 점은 실제 기온, 주황색 실선은 학습한 추세, "
+    "회색 세로선은 잔차, 빨간색 별표는 예측 기온입니다."
 )
