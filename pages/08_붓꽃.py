@@ -1,4 +1,10 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
 
+st.title("🌸 붓꽃 품종 분석")
+
+# 기존 데이터 불러오기 및 모델 코드가 이 위치에 있어야 함
 # ------------------------------------
 # 6. 깔끔한 산점도 그리기 (한글 깨짐 방지)
 # ------------------------------------
