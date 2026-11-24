@@ -3,8 +3,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
+import matplotlib.font_manager as fm
 from matplotlib.colors import ListedColormap
+from pathlib import Path
 
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
@@ -23,13 +24,42 @@ st.set_page_config(
 
 st.title("🌸 붓꽃 품종 예측")
 st.write(
-    "분류 알고리즘을 하나 선택하고 꽃잎 길이와 너비로 "
-    "붓꽃 품종을 예측해 보세요."
+    "꽃잎 길이와 너비를 입력하고 분류 알고리즘을 선택해 "
+    "예측 결과와 작동 원리를 확인해 보세요."
 )
 
 # --------------------------------------------------
-# 2. CSV 파일 불러오기
-#    pages 폴더의 상위 폴더에 Iris.csv가 있어야 함
+# 2. 그래프 글꼴 설정
+#    packages.txt에서 한글 글꼴을 설치합니다.
+# --------------------------------------------------
+plt.rcParams["axes.unicode_minus"] = False
+
+font_candidates = [
+    "NanumGothic",
+    "NanumBarunGothic",
+    "Malgun Gothic",
+    "AppleGothic"
+]
+
+font_found = False
+
+for font_name in font_candidates:
+    try:
+        fm.findfont(font_name, fallback_to_default=False)
+        plt.rcParams["font.family"] = font_name
+        font_found = True
+        break
+    except ValueError:
+        continue
+
+# 그래프 제목과 축은 영어를 사용하므로
+# 한글 글꼴이 없어도 그래프의 주요 문자는 표시됩니다.
+if not font_found:
+    plt.rcParams["font.family"] = "DejaVu Sans"
+
+# --------------------------------------------------
+# 3. CSV 파일 불러오기
+#    pages 폴더의 상위 폴더에 Iris.csv가 있어야 합니다.
 # --------------------------------------------------
 csv_path = Path(__file__).resolve().parent.parent / "Iris.csv"
 
@@ -80,7 +110,7 @@ if len(df) < 10 or df["품종"].nunique() < 2:
     st.stop()
 
 # --------------------------------------------------
-# 3. 학습 데이터 준비
+# 4. 데이터 준비
 # --------------------------------------------------
 feature_columns = ["꽃잎 길이", "꽃잎 너비"]
 X = df[feature_columns]
@@ -95,7 +125,7 @@ base_colors = [
     "#54A24B",
     "#B279A2",
     "#E45756",
-    "#72B7B2",
+    "#72B7B2"
 ]
 
 species_colors = {
@@ -116,7 +146,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # --------------------------------------------------
-# 4. 알고리즘 생성
+# 5. 세 가지 알고리즘 생성
 # --------------------------------------------------
 def make_models():
     return {
@@ -129,10 +159,10 @@ def make_models():
             n_estimators=100,
             max_depth=4,
             random_state=42
-        ),
+        )
     }
 
-# 정확도 평가
+# 테스트 데이터로 정확도 계산
 evaluation_models = make_models()
 accuracy_results = {}
 
@@ -143,29 +173,24 @@ for name, model in evaluation_models.items():
         y_test, predictions
     )
 
-# 최종 예측용 모델은 전체 데이터로 학습
+# 전체 데이터로 최종 모델 학습
 models = make_models()
 
 for model in models.values():
     model.fit(X, y)
 
 # --------------------------------------------------
-# 5. 알고리즘 선택
+# 6. 알고리즘 선택
 # --------------------------------------------------
-st.subheader("🧠 분류 알고리즘 선택")
+st.subheader("🧠 알고리즘 선택")
 
 selected_algorithm = st.selectbox(
-    "확인하고 싶은 알고리즘을 선택하세요.",
+    "확인할 알고리즘을 선택하세요.",
     ["KNN", "결정 트리", "랜덤 포레스트"]
 )
 
-st.caption(
-    "알고리즘을 바꾸면 선택한 알고리즘의 예측 결과와 "
-    "분류 그래프, 작동 원리가 표시됩니다."
-)
-
 # --------------------------------------------------
-# 6. 사용자 입력
+# 7. 꽃잎 길이와 너비 입력
 # --------------------------------------------------
 st.subheader("📝 꽃잎 정보 입력")
 
@@ -178,7 +203,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.caption(
-        f"데이터 범위: {length_min:.1f} ~ {length_max:.1f} cm"
+        f"입력 가능 범위: {length_min:.1f} ~ {length_max:.1f} cm"
     )
     petal_length = st.number_input(
         "꽃잎 길이 (cm)",
@@ -191,7 +216,7 @@ with col1:
 
 with col2:
     st.caption(
-        f"데이터 범위: {width_min:.1f} ~ {width_max:.1f} cm"
+        f"입력 가능 범위: {width_min:.1f} ~ {width_max:.1f} cm"
     )
     petal_width = st.number_input(
         "꽃잎 너비 (cm)",
@@ -204,19 +229,18 @@ with col2:
 
 input_data = pd.DataFrame({
     "꽃잎 길이": [petal_length],
-    "꽃잎 너비": [petal_width],
+    "꽃잎 너비": [petal_width]
 })
 
 # --------------------------------------------------
-# 7. 선택한 알고리즘의 예측 결과
+# 8. 선택한 알고리즘의 예측 결과
 # --------------------------------------------------
 selected_model = models[selected_algorithm]
-
 prediction = selected_model.predict(input_data)[0]
 probabilities = selected_model.predict_proba(input_data)[0]
 confidence = float(np.max(probabilities))
 
-st.subheader(f"🔍 {selected_algorithm} 예측 결과")
+st.subheader("🔍 예측 결과")
 
 result_col1, result_col2 = st.columns(2)
 
@@ -227,11 +251,10 @@ with result_col2:
     st.metric("예측 확률", f"{confidence * 100:.1f}%")
 
 st.caption(
-    "예측 확률은 모델이 계산한 값이며, 실제 정답일 가능성을 "
-    "완벽하게 보장하지는 않습니다."
+    "예측 확률은 모델이 계산한 값이며, "
+    "실제 정답일 가능성을 보장하지는 않습니다."
 )
 
-# 선택한 알고리즘의 품종별 확률
 st.write("**품종별 예측 확률**")
 
 probability_df = pd.DataFrame({
@@ -246,16 +269,15 @@ st.dataframe(
 )
 
 # --------------------------------------------------
-# 8. 선택한 알고리즘의 분류 그래프만 표시
+# 9. 선택한 알고리즘의 그래프
+#    그래프의 제목과 축은 영어로 표시해 글꼴 문제 방지
 # --------------------------------------------------
-st.subheader("📊 분류 영역 그래프")
-st.write(
-    "배경색은 선택한 알고리즘이 해당 위치에서 예측하는 품종입니다. "
-    "점은 실제 데이터이고 노란색 별은 입력한 꽃잎 정보입니다."
-)
+st.subheader("📊 품종 분류 그래프")
 
-plt.rcParams["font.family"] = "DejaVu Sans"
-plt.rcParams["axes.unicode_minus"] = False
+st.write(
+    "배경색은 알고리즘이 예측하는 품종 영역입니다. "
+    "점은 실제 데이터이고 노란색 별은 입력한 값입니다."
+)
 
 x_padding = max((length_max - length_min) * 0.08, 0.1)
 y_padding = max((width_max - width_min) * 0.08, 0.1)
@@ -275,7 +297,7 @@ xx, yy = np.meshgrid(x_values, y_values)
 
 grid_data = pd.DataFrame({
     "꽃잎 길이": xx.ravel(),
-    "꽃잎 너비": yy.ravel(),
+    "꽃잎 너비": yy.ravel()
 })
 
 species_to_number = {
@@ -285,11 +307,13 @@ species_to_number = {
 grid_predictions = selected_model.predict(grid_data)
 
 grid_numbers = np.array([
-    species_to_number[s] for s in grid_predictions
+    species_to_number[s]
+    for s in grid_predictions
 ]).reshape(xx.shape)
 
 class_cmap = ListedColormap([
-    species_colors[species] for species in species_list
+    species_colors[species]
+    for species in species_list
 ])
 
 fig, ax = plt.subplots(figsize=(9, 6))
@@ -303,7 +327,6 @@ ax.contourf(
     alpha=0.22
 )
 
-# 실제 데이터
 for species in species_list:
     species_data = df[df["품종"].astype(str) == species]
 
@@ -318,7 +341,7 @@ for species in species_list:
         label=species
     )
 
-# 사용자 입력: 노란색 별
+# 입력한 데이터는 노란색 별로 표시
 ax.scatter(
     petal_length,
     petal_width,
@@ -331,9 +354,16 @@ ax.scatter(
     label="Your input"
 )
 
+# 그래프 제목은 영어로 표시
+english_names = {
+    "KNN": "K-Nearest Neighbors",
+    "결정 트리": "Decision Tree",
+    "랜덤 포레스트": "Random Forest"
+}
+
 ax.set_title(
-    f"{selected_algorithm} - Prediction: {prediction}",
-    fontsize=14
+    f"{english_names[selected_algorithm]} - Prediction: {prediction}",
+    fontsize=13
 )
 ax.set_xlabel("Petal length (cm)")
 ax.set_ylabel("Petal width (cm)")
@@ -345,87 +375,108 @@ st.pyplot(fig, use_container_width=True)
 plt.close(fig)
 
 # --------------------------------------------------
-# 9. 선택한 알고리즘의 작동 원리
+# 10. 선택한 알고리즘의 작동 원리
 # --------------------------------------------------
 st.subheader("⚙️ 작동 원리")
 
 if selected_algorithm == "KNN":
     st.markdown(
         """
-        **KNN — 가까운 이웃을 이용한 분류**
+        **KNN: 가까운 이웃을 이용한 분류**
 
-        1. 입력한 꽃잎 길이와 너비를 모든 학습 데이터와 비교합니다.
-        2. 입력값과 거리가 가까운 이웃 5개를 찾습니다.
-        3. 이웃들에서 가장 많이 나타난 품종을 예측합니다.
+        1. 입력한 꽃잎 길이와 너비를 학습 데이터와 비교합니다.
+        2. 가까운 이웃 5개를 찾습니다.
+        3. 이웃에서 가장 많이 나타난 품종을 예측합니다.
 
-        **그래프 읽기:** 입력한 별 주변의 데이터 점들이 어떤 품종인지
-        살펴보세요. 가까운 이웃의 품종 분포가 예측에 영향을 줍니다.
+        **그래프 해석:** 입력한 별 주변에 어떤 품종의 점이
+        모여 있는지 확인해 보세요.
         """
     )
 
 elif selected_algorithm == "결정 트리":
     st.markdown(
         """
-        **결정 트리 — 조건에 따라 데이터를 나누는 분류**
+        **결정 트리: 조건을 따라 분류하기**
 
-        1. 꽃잎 길이 또는 너비에 대한 분류 조건을 학습합니다.
-        2. 조건을 차례대로 적용하여 데이터를 여러 영역으로 나눕니다.
-        3. 도달한 영역의 학습 결과를 바탕으로 품종을 예측합니다.
+        1. 꽃잎 길이와 너비를 기준으로 나누는 조건을 학습합니다.
+        2. 조건을 순서대로 적용해 데이터 영역을 나눕니다.
+        3. 해당 영역의 학습 결과를 바탕으로 품종을 예측합니다.
 
-        **그래프 읽기:** 분류 조건에 따라 배경색이 바뀌는 경계를
-        확인해 보세요. 영역이 직선이나 계단 모양으로 보일 수 있습니다.
+        **그래프 해석:** 배경색이 바뀌는 경계를 살펴보세요.
         """
     )
 
 else:
     st.markdown(
         """
-        **랜덤 포레스트 — 여러 결정 트리를 결합한 분류**
+        **랜덤 포레스트: 여러 결정 트리의 결과 결합**
 
-        1. 서로 다른 학습 표본과 특징을 활용해 여러 결정 트리를 만듭니다.
+        1. 서로 다른 표본과 특징을 활용해 여러 트리를 만듭니다.
         2. 각 트리가 입력한 꽃잎의 품종을 예측합니다.
         3. 여러 트리의 예측을 모아 최종 품종을 결정합니다.
 
-        **그래프 읽기:** 여러 트리의 결과가 결합되어 하나의 결정 트리와
-        다른 분류 영역이 만들어질 수 있습니다.
+        **그래프 해석:** 여러 트리의 결과가 결합된 분류 영역을
+        확인해 보세요.
         """
     )
 
 # --------------------------------------------------
-# 10. 세 알고리즘의 정확도 비교
+# 11. 세 알고리즘 정확도 비교
 # --------------------------------------------------
-st.subheader("📈 세 알고리즘의 정확도 비교")
+st.subheader("📈 세 알고리즘 정확도 비교")
 
 accuracy_df = pd.DataFrame({
-    "알고리즘": list(accuracy_results.keys()),
-    "테스트 정확도 (%)": [
-        round(value * 100, 1)
-        for value in accuracy_results.values()
-    ],
+    "Algorithm": list(accuracy_results.keys()),
+    "Accuracy (%)": [
+        round(score * 100, 1)
+        for score in accuracy_results.values()
+    ]
 })
 
-st.bar_chart(
-    accuracy_df.set_index("알고리즘"),
-    y="테스트 정확도 (%)"
+# 그래프의 축과 범례는 영어로 표시
+fig2, ax2 = plt.subplots(figsize=(8, 4))
+
+bars = ax2.bar(
+    accuracy_df["Algorithm"],
+    accuracy_df["Accuracy (%)"],
+    color=["#4C78A8", "#F58518", "#54A24B"]
 )
 
-for name, score in accuracy_results.items():
-    if name == selected_algorithm:
-        st.success(
-            f"현재 선택: {name} | 테스트 정확도: {score * 100:.1f}%"
-        )
+ax2.set_title("Algorithm Accuracy Comparison")
+ax2.set_xlabel("Algorithm")
+ax2.set_ylabel("Test accuracy (%)")
+ax2.set_ylim(0, 100)
+ax2.grid(axis="y", linestyle="--", alpha=0.3)
+
+for bar in bars:
+    height = bar.get_height()
+    ax2.text(
+        bar.get_x() + bar.get_width() / 2,
+        height + 1,
+        f"{height:.1f}%",
+        ha="center",
+        va="bottom"
+    )
+
+fig2.tight_layout()
+st.pyplot(fig2, use_container_width=True)
+plt.close(fig2)
 
 st.caption(
     "정확도는 데이터를 학습용 80%, 테스트용 20%로 나누어 계산합니다. "
-    "데이터 분할과 설정에 따라 결과가 달라질 수 있습니다."
+    "데이터 분할과 모델 설정에 따라 결과가 달라질 수 있습니다."
 )
 
 # --------------------------------------------------
-# 11. 원본 데이터 확인
+# 12. 원본 데이터
 # --------------------------------------------------
 with st.expander("📄 붓꽃 데이터 확인하기"):
     st.write(f"전체 데이터 수: {len(df)}개")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
 
     st.write("품종별 데이터 수")
     st.dataframe(
